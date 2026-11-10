@@ -11,3 +11,76 @@ execute:
 library(tidyverse)
 library(arrow)
 ```
+
+```{r}
+arrow::open_dataset("data/daily_prices.parquet")$schema
+```
+
+```{r}
+arrow::open_dataset("data/daily_prices.parquet") |>
+  collect() |>
+  slice_sample(n = 10)
+```
+
+```{r}
+arrow::open_dataset("data/daily_prices.parquet") |>
+  filter(date_raw >= "2025-01-01") |>
+  group_by(coin_id) |>
+  summarise(avg_market_cap_usd = mean(market_cap_usd, na.rm = TRUE), .groups = "drop") |>
+  arrange(desc(avg_market_cap_usd)) |>
+  collect()
+```
+
+```{r}
+prices <- arrow::read_parquet("data/daily_prices.parquet")
+metadata <- arrow::read_parquet("data/coin_metadata.parquet")
+categories <- arrow::read_parquet("data/categories.parquet")
+categories
+```
+
+```{r}
+metadata <- metadata |>
+  mutate(
+    launch_date_parsed = as.Date(
+      lubridate::parse_date_time(launch_date, orders = c("Y-m-d", "B d, Y"))
+    )
+  )
+
+metadata |>
+  arrange(launch_date_parsed) |>
+  select(coin_id, coin_name, launch_date, launch_date_parsed)
+```
+
+```{r}
+prices |>
+  filter(coin_id == "btc") |>
+  ggplot(aes(x = as.Date(date_raw), y = price_usd)) +
+  geom_line() +
+  labs(
+    title = "Bitcoin Daily Price",
+    x = "Date",
+    y = "Price (USD)"
+  )
+```
+
+```{r}
+#| cache: true
+prices |>
+  left_join(metadata, by = "coin_id")
+```
+
+```{r}
+crypto <- prices |>
+  group_by(date_raw) |>
+  summarise(total_market_cap_trillions = sum(market_cap_usd, na.rm = TRUE) / 1e12) |>
+  mutate(date = as.Date(date_raw))
+
+crypto |>
+  ggplot(aes(x = date, y = total_market_cap_trillions)) +
+  geom_line() +
+  labs(
+    title = "Total Cryptocurrency Market Cap",
+    x = "Date",
+    y = "Market Cap (trillions of USD)"
+  )
+```
